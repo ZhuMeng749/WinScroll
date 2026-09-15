@@ -1,6 +1,7 @@
 // Standalone behavioral checks for Macs with Command Line Tools but no XCTest.
 import CoreGraphics
-import ScrollCore
+import Darwin
+@testable import ScrollCore
 
 var checks = 0
 func expect<T: Equatable>(_ actual: T, _ expected: T, _ name: String) {
@@ -40,4 +41,32 @@ for delta: Int32 in [-8, -1, 0, 1, 12] {
     ScrollTransform.apply(to: input, enabled: true)
     expect(input.getIntegerValueField(.scrollWheelEventDeltaAxis1), -Int64(delta), "positive / negative / zero")
 }
-print("PASS: \(checks) scroll behavior checks")
+
+// Real IOHID objects with values observed from a physical wheel, never posted.
+typealias CreateHIDScroll = @convention(c) (CFAllocator?, UInt64, Double, Double, Double, UInt32) -> Unmanaged<CFTypeRef>?
+let ioKit = dlopen("/System/Library/Frameworks/IOKit.framework/IOKit", RTLD_LAZY)!
+guard let createSymbol = dlsym(ioKit, "IOHIDEventCreateScrollEvent") else { fatalError("IOHID fixture API unavailable") }
+let createHID = unsafeBitCast(createSymbol, to: CreateHIDScroll.self)
+expect(ScrollTransform.hidCompatibilityAvailable, true, "HID compatibility symbols available")
+for direction in [-1.0, 1.0] {
+    let backing = createHID(kCFAllocatorDefault, 0, 2, direction, 0, 0)!.takeRetainedValue()
+    let physical = wheel()
+    let outcome = ScrollTransform.apply(to: physical, enabled: true, hidSnapshot: { HIDScrollSnapshot(backing: backing) })
+    expect(outcome, .reversedWithHID, "HID-backed event outcome")
+    expect(HIDScrollBridge.readValue!(backing, HIDScrollBridge.verticalField), -direction, "physical HID vertical reversal")
+    expect(HIDScrollBridge.readValue!(backing, 6 << 16), 2, "physical HID horizontal preservation")
+    expect(physical.getIntegerValueField(.scrollWheelEventDeltaAxis1), -3, "HID event CG line reversal")
+}
+for field: CGEventField? in [nil, .scrollWheelEventIsContinuous, .scrollWheelEventMomentumPhase, .scrollWheelEventScrollPhase] {
+    let backing = createHID(kCFAllocatorDefault, 0, 0, 1, 0, 0)!.takeRetainedValue()
+    let physical = wheel()
+    if let field { physical.setIntegerValueField(field, value: 1) }
+    var captured = false
+    ScrollTransform.apply(to: physical, enabled: field != nil, hidSnapshot: {
+        captured = true
+        return HIDScrollSnapshot(backing: backing)
+    })
+    expect(captured, false, "ignored event must not access HID payload")
+    expect(HIDScrollBridge.readValue!(backing, HIDScrollBridge.verticalField), 1, "ignored HID event preservation")
+}
+print("PASS: \(checks) scroll behavior checks, including IOHID payload fixtures")
