@@ -3,17 +3,28 @@ import SwiftUI
 import Combine
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let model = AppModel()
+    private lazy var model = AppModel()
+    private static let showSettingsNotification = Notification.Name("local.winscroll.showSettings")
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
     private var window: NSWindow?
     private var observation: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // A second launch opens the existing app through Launch Services.
+        // A second copy must open the existing window before it exits. Keep
+        // model lazy so that copy never starts another scroll event filter.
         let others = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "local.winscroll.app")
             .filter { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }
-        if !others.isEmpty && !model.preview { NSApp.terminate(nil); return }
+        if let existing = others.first, !CommandLine.arguments.contains("--preview") {
+            DistributedNotificationCenter.default().postNotificationName(
+                Self.showSettingsNotification, object: String(existing.processIdentifier),
+                userInfo: nil, deliverImmediately: true)
+            NSApp.terminate(nil)
+            return
+        }
+        DistributedNotificationCenter.default().addObserver(
+            self, selector: #selector(revealSettings), name: Self.showSettingsNotification,
+            object: String(ProcessInfo.processInfo.processIdentifier))
         NSApp.setActivationPolicy(.accessory)
         let mainMenu = NSMenu()
         let appMenu = NSMenu()
@@ -29,9 +40,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async { self?.updateStatus() }
         }
         updateStatus()
-        if model.preview || !UserDefaults.standard.bool(forKey: "hasOpened") {
+        // Manual launches always show a window. Login launches stay in the
+        // menu bar, as indicated by the system's open-application Apple event.
+        let launchReason = NSAppleEventManager.shared().currentAppleEvent?
+            .paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue
+        let backgroundLaunch = launchReason == keyAELaunchedAsLogInItem || launchReason == keyAELaunchedAsServiceItem
+        if model.preview || !backgroundLaunch {
             showWindow()
-            if !model.preview { UserDefaults.standard.set(true, forKey: "hasOpened") }
         }
     }
 
@@ -50,6 +65,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    @objc private func revealSettings() { showWindow() }
+
     func showWindow() {
         popover.performClose(nil)
         if window == nil {
@@ -62,6 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panel.center()
             window = panel
         }
+        window?.deminiaturize(nil)
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -69,7 +87,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showWindow(); return true
     }
-    func applicationWillTerminate(_ notification: Notification) { model.shutdown() }
+    func applicationWillTerminate(_ notification: Notification) {
+        DistributedNotificationCenter.default().removeObserver(self)
+        // Do not initialize the model in a duplicate process just to stop it.
+        if statusItem != nil { model.shutdown() }
+    }
 }
 
 let app = NSApplication.shared

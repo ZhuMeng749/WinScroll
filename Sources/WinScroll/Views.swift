@@ -219,7 +219,7 @@ struct SettingsContent: View {
             }
             Divider().padding(.vertical, 22)
             HStack {
-                Text("VERSION 1.0.1").font(.system(size: 9, weight: .medium, design: .monospaced)).foregroundStyle(.secondary)
+                Text("VERSION 1.0.2").font(.system(size: 9, weight: .medium, design: .monospaced)).foregroundStyle(.secondary)
                 Spacer()
                 Button("退出") { NSApp.terminate(nil) }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.secondary)
             }
