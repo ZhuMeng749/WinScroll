@@ -39,6 +39,10 @@ struct MenuContent: View {
                 Spacer()
             }
             StatusLabel(model: model)
+            if model.running {
+                Text("收到 \(model.receivedCount) 次 · 已反转 \(model.reversedCount) 次")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Divider()
             Toggle(isOn: $model.reverseEnabled) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -49,6 +53,8 @@ struct MenuContent: View {
             Label("触控板滚动保持原样", systemImage: "checkmark.shield")
                 .font(.system(size: 12)).foregroundStyle(.secondary)
             if !model.trusted {
+                Text("反转尚未生效：请先允许辅助功能权限。")
+                    .font(.caption).foregroundStyle(.orange)
                 Button("设置辅助功能权限…", action: showDetails)
                     .buttonStyle(.borderedProminent).tint(accent)
             }
@@ -98,10 +104,19 @@ struct SettingsContent: View {
                                     .font(.system(size: 11)).foregroundStyle(.secondary)
                             }
                         }.toggleStyle(.switch).tint(accent)
+                        if model.reverseEnabled && !model.trusted {
+                            Text("开关已开启，但辅助功能未授权，当前不会改变滚轮方向。")
+                                .font(.system(size: 11, weight: .medium)).foregroundStyle(.orange)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                         Label("触控板与惯性滚动保持原样", systemImage: "checkmark.shield.fill")
                             .font(.system(size: 11)).foregroundStyle(.secondary)
                     }.card()
 
+                    if !model.installedInApplications && !model.preview {
+                        Label("当前应用还没有安装到「应用程序」。请先移动应用，再从那里打开和授权。", systemImage: "folder.badge.questionmark")
+                            .font(.system(size: 11)).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                    }
                     if !model.trusted {
                         HStack(alignment: .top, spacing: 12) {
                             Image(systemName: "hand.raised.fill").foregroundStyle(accent).font(.system(size: 19))
@@ -120,6 +135,29 @@ struct SettingsContent: View {
                             Button("重试") { model.engine.stop(); model.refresh() }
                         }.font(.caption).card()
                     }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("运行检查").font(.system(size: 13, weight: .semibold))
+                            Spacer()
+                            Text("每 2 秒更新").font(.system(size: 10)).foregroundStyle(.secondary)
+                        }
+                        HStack(spacing: 18) {
+                            Text("收到 \(model.receivedCount) 次")
+                            Text("已反转 \(model.reversedCount) 次")
+                            Text("完整同步 \(model.hidReversedCount) 次")
+                        }.font(.system(size: 11, weight: .medium)).foregroundStyle(accent)
+                        Text(model.diagnosticMessage).font(.system(size: 11)).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if !model.compatibilityAvailable {
+                            Text("此系统的底层滚轮兼容接口不可用，部分应用的反转效果可能受限。")
+                                .font(.system(size: 11)).foregroundStyle(.orange)
+                        }
+                        if !model.otherScrollApps.isEmpty {
+                            Text("同时运行：\(model.otherScrollApps.joined(separator: "、"))。如方向异常，请检查这些工具的反转开关，避免重复处理。")
+                                .font(.system(size: 11)).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }.card()
 
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
@@ -181,7 +219,7 @@ struct SettingsContent: View {
             }
             Divider().padding(.vertical, 22)
             HStack {
-                Text("VERSION 1.0.0").font(.system(size: 9, weight: .medium, design: .monospaced)).foregroundStyle(.secondary)
+                Text("VERSION 1.0.1").font(.system(size: 9, weight: .medium, design: .monospaced)).foregroundStyle(.secondary)
                 Spacer()
                 Button("退出") { NSApp.terminate(nil) }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.secondary)
             }

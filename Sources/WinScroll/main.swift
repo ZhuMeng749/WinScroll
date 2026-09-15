@@ -73,6 +73,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 let app = NSApplication.shared
+if CommandLine.arguments.contains("--status-json") {
+    // Read-only support command: never starts an event tap or requests access.
+    let data: [String: Any] = [
+        "accessibilityGranted": AXIsProcessTrusted(),
+        "reverseEnabled": UserDefaults.standard.object(forKey: "reverseEnabled") as? Bool ?? true,
+        "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown",
+        "bundlePath": Bundle.main.bundleURL.path
+    ]
+    let json = try JSONSerialization.data(withJSONObject: data, options: [.sortedKeys])
+    print(String(data: json, encoding: .utf8)!)
+    exit(0)
+}
 if let index = CommandLine.arguments.firstIndex(of: "--export-preview"),
    CommandLine.arguments.count > index + 1,
    CommandLine.arguments.contains("--preview") {

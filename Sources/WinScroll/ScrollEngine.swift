@@ -4,6 +4,10 @@ import ScrollCore
 final class ScrollEngine {
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
+    private(set) var receivedCount = 0
+    private(set) var reversedCount = 0
+    private(set) var hidReversedCount = 0
+    private(set) var lastOutcome: ScrollTransform.Outcome?
     var isRunning: Bool { tap.map { CGEvent.tapIsEnabled(tap: $0) } ?? false }
 
     func start() -> Bool {
@@ -21,7 +25,11 @@ final class ScrollEngine {
                 if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
                     if let tap = engine.tap { CGEvent.tapEnable(tap: tap, enable: true) }
                 } else if type == .scrollWheel {
-                    ScrollTransform.apply(to: event, enabled: true)
+                    engine.receivedCount += 1
+                    let outcome = ScrollTransform.apply(to: event, enabled: true)
+                    engine.lastOutcome = outcome
+                    if outcome == .reversed || outcome == .reversedWithHID { engine.reversedCount += 1 }
+                    if outcome == .reversedWithHID { engine.hidReversedCount += 1 }
                 }
                 return Unmanaged.passUnretained(event)
             }, userInfo: Unmanaged.passUnretained(self).toOpaque()
@@ -32,6 +40,10 @@ final class ScrollEngine {
         }
         tap = newTap
         source = newSource
+        receivedCount = 0
+        reversedCount = 0
+        hidReversedCount = 0
+        lastOutcome = nil
         CFRunLoopAddSource(CFRunLoopGetMain(), newSource, .commonModes)
         CGEvent.tapEnable(tap: newTap, enable: true)
         return isRunning
